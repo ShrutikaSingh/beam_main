@@ -415,9 +415,9 @@ export default function ImageSearch() {
         ) : results.length > 0 ? (
           <>
             <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-4">
-              {results.map((image) => (
+              {results.map((image, index) => (
                 <ImageCard
-                  key={`img-${image.id}-${image.original_id || ''}`}
+                  key={`img-${index}-${image.id}`}
                   image={image}
                   onClick={() => handleImageSelect(image)}
                   onDownload={(e) => handleDownload(e, image.supabase_img_url)}
