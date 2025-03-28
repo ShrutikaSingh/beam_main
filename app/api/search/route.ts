@@ -27,15 +27,18 @@ export async function GET(request: NextRequest) {
     
     console.log(`Processing search for query: "${query}"`);
     
+   
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+
     // Step 1: Generate text embedding via our API
-    const embeddingResponse = await fetch(new URL('/api/embeddings', request.url), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ text: query })
-    });
-    
+    const embeddingResponse = await fetch(`${baseUrl}/api/embeddings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: query }),
+      });
+      
     if (!embeddingResponse.ok) {
       console.error('Error generating embedding:', await embeddingResponse.text());
       return NextResponse.json(
