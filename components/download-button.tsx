@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState } from "react"
 import { Download } from "lucide-react"
+import { transformImageUrl } from '@/lib/utils'
 
 interface DownloadButtonProps {
   imageUrl: string
@@ -20,8 +21,11 @@ export function DownloadButton({ imageUrl, alt }: DownloadButtonProps) {
     setDownloading(true)
 
     try {
+      // Transform URL to use new domain
+      const transformedUrl = transformImageUrl(imageUrl)
+      
       // For local images in our app, we need to use the full URL
-      const absoluteUrl = new URL(imageUrl, window.location.origin).href
+      const absoluteUrl = new URL(transformedUrl, window.location.origin).href
 
       // Fetch the image as a blob
       const response = await fetch(absoluteUrl)

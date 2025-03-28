@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientSupabaseClient } from '@/lib/supabase';
+import { transformImageUrl } from '@/lib/utils';
 
 // Define interface for embedding matches
 interface EmbeddingMatch {
@@ -136,9 +137,15 @@ export async function GET(request: NextRequest) {
     
     console.log(`Retrieved ${images?.length || 0} images for page ${page}`);
     
-    // Return the results
+    // Transform the URLs before returning
+    const transformedImages = images?.map(image => ({
+      ...image,
+      supabase_img_url: transformImageUrl(image.supabase_img_url)
+    })) || [];
+    
+    // Return the results with transformed URLs
     return NextResponse.json({
-      images: images,
+      images: transformedImages,
       hasMore: imageIds.length > offset + limit,
       totalCount: imageIds.length
     });

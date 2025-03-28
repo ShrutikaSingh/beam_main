@@ -1,6 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
@@ -26,6 +25,23 @@ export async function middleware(req: NextRequest) {
   // Refresh session if expired
   await supabase.auth.getSession()
   
+  const url = req.nextUrl.clone()
+  
+  // Check if the request is for an image from the old domain
+  if (url.pathname.includes('auth.ravahq.com')) {
+    // Rewrite to new domain
+    const newPath = url.pathname.replace('auth.ravahq.com', 'auth.beam.new')
+    url.pathname = newPath
+    return NextResponse.rewrite(url)
+  }
+  
+  // Handle relative image paths
+  if (url.pathname.startsWith('/abcs') && !url.pathname.includes('auth.beam.new')) {
+    // Rewrite to include full path with new domain
+    url.pathname = `https://auth.beam.new/storage/v1/object/beamdata${url.pathname}`
+    return NextResponse.rewrite(url)
+  }
+  
   return res
 }
 
@@ -37,6 +53,6 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 } 

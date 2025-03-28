@@ -1,4 +1,5 @@
 import { createClientSupabaseClient } from './supabase'
+import { transformImageUrl } from '@/lib/utils'
 
 export interface BeamImage {
   id: number
@@ -70,23 +71,6 @@ export async function fetchBeamImages(page: number = 1, perPage: number = 20, se
     hasMore: data.length === perPage,
     totalCount: count
   }
-}
-
-// Add this helper function to transform URLs
-function transformImageUrl(url: string): string {
-  if (!url) return url;
-  
-  // Replace old domain with new one
-  if (url.includes('auth.ravahq.com')) {
-    return url.replace('auth.ravahq.com', 'auth.beam.new');
-  }
-  
-  // Handle relative URLs by adding the new domain
-  if (url.startsWith('abcs') || !url.startsWith('http')) {
-    return `https://auth.beam.new/storage/v1/object/beamdata/${url}`;
-  }
-  
-  return url;
 }
 
 /**

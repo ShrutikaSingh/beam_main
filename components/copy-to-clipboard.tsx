@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState } from "react"
 import { Check, Copy } from "lucide-react"
+import { transformImageUrl } from '@/lib/utils'
 
 interface CopyToClipboardProps {
   imageUrl: string
@@ -21,8 +22,11 @@ export function CopyToClipboard({ imageUrl, alt }: CopyToClipboardProps) {
     setCopying(true)
 
     try {
+      // Transform URL to use new domain
+      const transformedUrl = transformImageUrl(imageUrl)
+      
       // Convert relative URL to absolute URL
-      const absoluteUrl = new URL(imageUrl, window.location.origin).href
+      const absoluteUrl = new URL(transformedUrl, window.location.origin).href
 
       // Fetch the image as a blob
       const response = await fetch(absoluteUrl)
