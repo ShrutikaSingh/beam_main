@@ -10,10 +10,11 @@ import { TypewriterEffect } from "@/components/typewriter-effect"
 import { AuthWall } from "@/components/auth-wall"
 import { useViewedCount } from "@/hooks/use-viewed-count"
 import { Navbar } from "@/components/navbar"
-import { fetchBeamImages, type BeamImage } from "@/lib/api"
+import { fetchBeamImages, searchImagesByEmbedding, type BeamImage } from "@/lib/api"
 
 // Add a constant at the top of the file, near other constants
 const MODAL_ENABLED = true // Set to false to disable the image modal
+const USE_EMBEDDING_SEARCH = true // Set to false to disable embedding search
 
 // Suggested searches for creative strategists
 const suggestedSearches = ["minimalist product packaging", "korean skincare", "emotional storytelling"]
@@ -31,6 +32,7 @@ export default function ImageSearch() {
   const [downloading, setDownloading] = useState(false)
   const [copying, setCopying] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [isEmbeddingSearch, setIsEmbeddingSearch] = useState(false)
 
   const {
     incrementScrollCount,
@@ -125,24 +127,53 @@ export default function ImageSearch() {
   }, [isInitialLoad])
 
   // Handle search
-  const handleSearch = () => {
-    setIsSearching(true)
-    setPage(1)
-
-    fetchBeamImages(1, 20, query)
-      .then(({ images, hasMore, totalCount }) => {
-        setResults(images)
-        setHasMore(hasMore)
+  const handleSearch = async () => {
+    setIsSearching(true);
+    setPage(1);
+    
+    try {
+      // If query is empty, show all images by using regular fetchBeamImages
+      if (!query.trim()) {
+        console.log("Search query is empty, showing all images");
+        setIsEmbeddingSearch(false);
+        const { images, hasMore, totalCount } = await fetchBeamImages(1, 20);
+        console.log(`Loaded ${images.length} images`);
+        setResults(images);
+        setHasMore(hasMore);
         if (totalCount) {
-          setTotalImages(totalCount)
+          setTotalImages(totalCount);
         }
-      })
-      .catch((error) => {
-        console.error("Error searching images:", error)
-      })
-      .finally(() => {
-        setIsSearching(false)
-      })
+      } else {
+        // If query is provided, use embedding-based search
+        console.log("Performing semantic embedding search for:", query);
+        setIsEmbeddingSearch(true);
+        const { images, hasMore, totalCount } = await searchImagesByEmbedding(query, 1, 20);
+        console.log(`Embedding search found ${images.length} results for "${query}"`);
+        setResults(images);
+        setHasMore(hasMore);
+        if (totalCount) {
+          setTotalImages(totalCount);
+        }
+      }
+    } catch (error) {
+      console.error("Error with semantic search:", error);
+      // Fall back to regular search only if embedding search fails
+      try {
+        console.log("Falling back to regular search for:", query || "all images");
+        setIsEmbeddingSearch(false);
+        const { images, hasMore, totalCount } = await fetchBeamImages(1, 20, query);
+        console.log(`Regular search found ${images.length} results`);
+        setResults(images);
+        setHasMore(hasMore);
+        if (totalCount) {
+          setTotalImages(totalCount);
+        }
+      } catch (fallbackError) {
+        console.error("Error with fallback search:", fallbackError);
+      }
+    } finally {
+      setIsSearching(false);
+    }
   }
 
   // Load more images when scrolling
@@ -159,19 +190,37 @@ export default function ImageSearch() {
 
     setIsSearching(true)
 
-    fetchBeamImages(nextPage, 20, query)
-      .then(({ images, hasMore }) => {
-        setResults((prev) => [...prev, ...images])
-        setHasMore(hasMore)
-        setPage(nextPage)
-      })
-      .catch((error) => {
-        console.error("Error loading more images:", error)
-      })
-      .finally(() => {
-        setIsSearching(false)
-      })
-  }, [page, isSearching, totalImages, isScrollLimitReached, query])
+    // Use the appropriate search method based on current search mode
+    if (isEmbeddingSearch && query) {
+      // Use embedding search
+      searchImagesByEmbedding(query, nextPage, 20)
+        .then(({ images, hasMore }) => {
+          setResults((prev) => [...prev, ...images])
+          setHasMore(hasMore)
+          setPage(nextPage)
+        })
+        .catch((error) => {
+          console.error("Error loading more images with embedding search:", error)
+        })
+        .finally(() => {
+          setIsSearching(false)
+        })
+    } else {
+      // Use regular search - pass query only if it has content
+      fetchBeamImages(nextPage, 20, query.trim() || undefined)
+        .then(({ images, hasMore }) => {
+          setResults((prev) => [...prev, ...images])
+          setHasMore(hasMore)
+          setPage(nextPage)
+        })
+        .catch((error) => {
+          console.error("Error loading more images:", error)
+        })
+        .finally(() => {
+          setIsSearching(false)
+        })
+    }
+  }, [page, isSearching, totalImages, isScrollLimitReached, query, isEmbeddingSearch])
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
@@ -379,7 +428,13 @@ export default function ImageSearch() {
               type="text"
               placeholder=""
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                // If the query becomes empty, trigger the search to show all images
+                if (e.target.value === '') {
+                  handleSearch();
+                }
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
@@ -397,9 +452,26 @@ export default function ImageSearch() {
                 Search for ads...
               </div>
             )}
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#6D6E71]" />
+            <Search 
+              className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#6D6E71] cursor-pointer" 
+              onClick={handleSearch}
+            />
           </div>
         </div>
+
+        {/* Search indicator for embedding search */}
+        {query && isEmbeddingSearch && (
+          <div className="text-center text-[#F0EFE9] mb-8 font-sans text-xs">
+            <span className="bg-[#F0EFE9] text-[#6D6E71] px-2 py-1 rounded-full">AI-powered semantic search</span>
+          </div>
+        )}
+
+        {/* Empty query indicator */}
+        {!query && (
+          <div className="text-center text-[#F0EFE9] mb-8 font-sans text-xs">
+            <span className="bg-[#F0EFE9] text-[#6D6E71] px-2 py-1 rounded-full">Showing all images</span>
+          </div>
+        )}
 
         {/* Results */}
         {isInitialLoad && isSearching ? (
@@ -639,4 +711,5 @@ function ImageCard({
     </div>
   )
 }
+
 
