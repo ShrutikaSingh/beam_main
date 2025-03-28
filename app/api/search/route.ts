@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     // Step 3: Find matching image IDs using cosine similarity search
     const { data: embeddingMatches, error: embeddingError } = await supabase.rpc('match_embeddings_by_vector', {
       query_embedding: embedding,
-      match_threshold: 0.18, // Lower threshold for more results
+      match_threshold: 0.2, // Lower threshold for more results
       match_count: 100 // Get more than needed for pagination
     });
     
