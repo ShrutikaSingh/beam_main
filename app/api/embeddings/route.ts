@@ -47,8 +47,21 @@ export async function POST(request: NextRequest) {
     prediction = await replicate.wait(prediction);
     console.log(`Successfully generated embedding for search`);
     
+    // Extract just the embedding array from the prediction output
+    // The output format appears to be: [{"embedding": [...], "input": "..."}]
+    const predictionOutput = prediction.output;
+    let embedding;
+    
+    if (Array.isArray(predictionOutput) && predictionOutput.length > 0 && predictionOutput[0].embedding) {
+      // Extract just the embedding array
+      embedding = predictionOutput[0].embedding;
+    } else {
+      // Fall back to using the raw output if it doesn't match expected format
+      embedding = predictionOutput;
+    }
+    
     // Return the embedding
-    return NextResponse.json({ embedding: prediction.output });
+    return NextResponse.json({ embedding });
     
   } catch (error) {
     console.error('Error generating embedding:', error);

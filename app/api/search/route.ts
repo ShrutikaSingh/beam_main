@@ -50,12 +50,44 @@ export async function GET(request: NextRequest) {
     const { embedding } = await embeddingResponse.json();
     console.log('Successfully generated embedding for search');
     
+    // Ensure embedding is properly formatted as an array
+    let formattedEmbedding;
+    if (typeof embedding === 'string') {
+      try {
+        // Try to parse if it's a JSON string
+        formattedEmbedding = JSON.parse(embedding);
+      } catch (e) {
+        console.error('Error parsing embedding string:', e);
+        return NextResponse.json(
+          { error: 'Invalid embedding format' },
+          { status: 500 }
+        );
+      }
+    } else if (embedding && typeof embedding === 'object') {
+      // If it's already an object with embedding property, extract it
+      if (Array.isArray(embedding) && embedding.length > 0 && embedding[0]?.embedding) {
+        formattedEmbedding = embedding[0].embedding;
+      } else {
+        // Otherwise use as is if it's already an array
+        formattedEmbedding = embedding;
+      }
+    }
+    
+    // Validate that we have a proper array
+    if (!Array.isArray(formattedEmbedding)) {
+      console.error('Invalid embedding format, expected array but got:', typeof formattedEmbedding);
+      return NextResponse.json(
+        { error: 'Invalid embedding format, expected array' },
+        { status: 500 }
+      );
+    }
+    
     // Step 2: Initialize Supabase client
     const supabase = createClientSupabaseClient();
     
     // Step 3: Find matching image IDs using cosine similarity search
     const { data: embeddingMatches, error: embeddingError } = await supabase.rpc('match_embeddings_by_vector', {
-      query_embedding: embedding,
+      query_embedding: formattedEmbedding,
       match_threshold: 0.2, // Lower threshold for more results
       match_count: 100 // Get more than needed for pagination
     });
