@@ -11,6 +11,7 @@ import { AuthWall } from "@/components/auth-wall"
 import { useViewedCount } from "@/hooks/use-viewed-count"
 import { Navbar } from "@/components/navbar"
 import { fetchBeamImages, searchImagesByEmbedding, type BeamImage } from "@/lib/api"
+import Masonry from 'react-masonry-css';
 
 // Add a constant at the top of the file, near other constants
 const MODAL_ENABLED = true // Set to false to disable the image modal
@@ -33,6 +34,14 @@ export default function ImageSearch() {
   const [copying, setCopying] = useState(false)
   const [copied, setCopied] = useState(false)
   const [isEmbeddingSearch, setIsEmbeddingSearch] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [imagesPerPage, setImagesPerPage] = useState(20)
+  const [totalCount, setTotalCount] = useState(0)
+  const [searchMode, setSearchMode] = useState('standard')
+  const [prefetchedResults, setPrefetchedResults] = useState<BeamImage[]>([])
+  const [prefetchedPage, setPrefetchedPage] = useState(2) // Start with page 2 since page 1 is loaded initially
 
   const {
     incrementScrollCount,
@@ -126,40 +135,31 @@ export default function ImageSearch() {
     }
   }, [isInitialLoad])
 
-  // Handle search
+  // Update the input handler to fetch initial images when query becomes empty
   const handleSearch = async () => {
+    // Don't do anything if the query is empty (already handled by onChange)
+    if (!query.trim()) {
+      return;
+    }
+    
     setIsSearching(true);
     setPage(1);
     
     try {
-      // If query is empty, show all images by using regular fetchBeamImages
-      if (!query.trim()) {
-        console.log("Search query is empty, showing all images");
-        setIsEmbeddingSearch(false);
-        const { images, hasMore, totalCount } = await fetchBeamImages(1, 20);
-        console.log(`Loaded ${images.length} images`);
-        setResults(images);
-        setHasMore(hasMore);
-        if (totalCount) {
-          setTotalImages(totalCount);
-        }
-      } else {
-        // If query is provided, use embedding-based search
-        console.log("Performing semantic embedding search for:", query);
-        setIsEmbeddingSearch(true);
-        const { images, hasMore, totalCount } = await searchImagesByEmbedding(query, 1, 20);
-        console.log(`Embedding search found ${images.length} results for "${query}"`);
-        setResults(images);
-        setHasMore(hasMore);
-        if (totalCount) {
-          setTotalImages(totalCount);
-        }
+      console.log("Performing semantic embedding search for:", query);
+      setIsEmbeddingSearch(true);
+      const { images, hasMore, totalCount } = await searchImagesByEmbedding(query, 1, 20);
+      console.log(`Embedding search found ${images.length} results for "${query}"`);
+      setResults(images);
+      setHasMore(hasMore);
+      if (totalCount) {
+        setTotalImages(totalCount);
       }
     } catch (error) {
       console.error("Error with semantic search:", error);
       // Fall back to regular search only if embedding search fails
       try {
-        console.log("Falling back to regular search for:", query || "all images");
+        console.log("Falling back to regular search for:", query);
         setIsEmbeddingSearch(false);
         const { images, hasMore, totalCount } = await fetchBeamImages(1, 20, query);
         console.log(`Regular search found ${images.length} results`);
@@ -174,81 +174,143 @@ export default function ImageSearch() {
     } finally {
       setIsSearching(false);
     }
-  }
+  };
 
-  // Load more images when scrolling
-  const loadMoreImages = useCallback(() => {
-    if (isSearching || isScrollLimitReached) return
-
-    const nextPage = page + 1
-    const startIndex = (nextPage - 1) * 20
-
-    if (startIndex >= totalImages) {
-      setHasMore(false)
-      return
+  // Add this helper function to fetch initial images
+  const fetchInitialImagesIfEmpty = async () => {
+    setIsSearching(true);
+    setIsEmbeddingSearch(false);
+    
+    try {
+      console.log("Query is empty, showing all images");
+      const { images, hasMore, totalCount } = await fetchBeamImages(1, 20);
+      console.log(`Loaded ${images.length} images`);
+      setResults(images);
+      setHasMore(hasMore);
+      if (totalCount) {
+        setTotalImages(totalCount);
+      }
+    } catch (error) {
+      console.error("Error loading initial images:", error);
+    } finally {
+      setIsSearching(false);
     }
+  };
 
-    setIsSearching(true)
-
-    // Use the appropriate search method based on current search mode
-    if (isEmbeddingSearch && query) {
-      // Use embedding search
-      searchImagesByEmbedding(query, nextPage, 20)
-        .then(({ images, hasMore }) => {
-          setResults((prev) => [...prev, ...images])
-          setHasMore(hasMore)
-          setPage(nextPage)
-        })
-        .catch((error) => {
-          console.error("Error loading more images with embedding search:", error)
-        })
-        .finally(() => {
-          setIsSearching(false)
-        })
-    } else {
-      // Use regular search - pass query only if it has content
-      fetchBeamImages(nextPage, 20, query.trim() || undefined)
-        .then(({ images, hasMore }) => {
-          setResults((prev) => [...prev, ...images])
-          setHasMore(hasMore)
-          setPage(nextPage)
-        })
-        .catch((error) => {
-          console.error("Error loading more images:", error)
-        })
-        .finally(() => {
-          setIsSearching(false)
-        })
-    }
-  }, [page, isSearching, totalImages, isScrollLimitReached, query, isEmbeddingSearch])
-
-  // Set up intersection observer for infinite scroll
+  // Make sure to load initial images on component mount
   useEffect(() => {
-    if (isSearching || isScrollLimitReached) return
+    fetchInitialImagesIfEmpty();
+  }, []); // Empty dependency array means this runs once on mount
 
-    if (observer.current) {
-      observer.current.disconnect()
+  // Add a new function to prefetch the next page
+  const prefetchNextPage = useCallback(async () => {
+    if (!hasMore || isSearching) return
+    
+    try {
+      console.log(`Prefetching page ${prefetchedPage}`)
+      
+      let result
+      if (isEmbeddingSearch && query.trim()) {
+        result = await searchImagesByEmbedding(query, prefetchedPage, imagesPerPage)
+      } else {
+        result = await fetchBeamImages(prefetchedPage, imagesPerPage)
+      }
+      
+      setPrefetchedResults(result.images)
+      // Don't update hasMore or totalImages yet - we'll do that when these results are actually displayed
+    } catch (error) {
+      console.error(`Error prefetching page ${prefetchedPage}:`, error)
     }
+  }, [prefetchedPage, hasMore, isSearching, isEmbeddingSearch, query, imagesPerPage])
 
-    observer.current = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore) {
-          loadMoreImages()
+  // Call prefetch after initial load and whenever the current page changes
+  useEffect(() => {
+    if (!isInitialLoad && !isSearching) {
+      prefetchNextPage()
+    }
+  }, [isInitialLoad, isSearching, prefetchNextPage])
+
+  // Modify the existing loadMore function to use prefetched results when available
+  const loadMore = useCallback(async () => {
+    if (!hasMore || isSearching || isScrollLimitReached) return
+    
+    setIsSearching(true)
+    const nextPage = page + 1
+    
+    try {
+      if (prefetchedResults.length > 0) {
+        // Use the prefetched results
+        console.log(`Using prefetched results for page ${prefetchedPage}`)
+        setResults(prev => [...prev, ...prefetchedResults])
+        setPage(prefetchedPage)
+        
+        // Reset prefetched results and increment prefetched page
+        setPrefetchedResults([])
+        setPrefetchedPage(prefetchedPage + 1)
+        
+        // Start prefetching the next page immediately
+        setTimeout(prefetchNextPage, 100)
+      } else {
+        // Fall back to regular fetching if prefetched results aren't available
+        console.log(`No prefetched results available, fetching page ${nextPage}`)
+        let result
+        if (isEmbeddingSearch && query.trim()) {
+          result = await searchImagesByEmbedding(query, nextPage, imagesPerPage)
+        } else {
+          result = await fetchBeamImages(nextPage, imagesPerPage)
         }
-      },
-      { threshold: 0.5 },
-    )
-
-    if (loadingRef.current) {
-      observer.current.observe(loadingRef.current)
+        
+        setResults(prev => [...prev, ...result.images])
+        setHasMore(result.hasMore)
+        if (result.totalCount) {
+          setTotalImages(result.totalCount)
+        }
+        setPage(nextPage)
+      }
+    } catch (error) {
+      console.error(`Error loading page ${nextPage}:`, error)
+    } finally {
+      setIsSearching(false)
     }
+  }, [
+    hasMore, 
+    isSearching, 
+    isScrollLimitReached, 
+    page, 
+    prefetchedResults, 
+    prefetchedPage, 
+    isEmbeddingSearch, 
+    query, 
+    imagesPerPage, 
+    prefetchNextPage
+  ])
 
-    return () => {
-      if (observer.current) {
-        observer.current.disconnect()
+  // Update your IntersectionObserver effect to use the new loadMore function
+  useEffect(() => {
+    if (loadingRef.current) {
+      const currentLoadingRef = loadingRef.current
+
+      const options = {
+        root: null,
+        rootMargin: '500px', // Load more before user reaches the bottom
+        threshold: 0.1,
+      }
+
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && !isSearching && hasMore && !isScrollLimitReached) {
+          loadMore()
+        }
+      }, options)
+
+      observer.current.observe(currentLoadingRef)
+      
+      return () => {
+        if (observer.current) {
+          observer.current.unobserve(currentLoadingRef)
+        }
       }
     }
-  }, [loadMoreImages, isSearching, hasMore, isScrollLimitReached])
+  }, [loadMore, isSearching, hasMore, isScrollLimitReached])
 
   // Handle ESC key to close modal
   useEffect(() => {
@@ -361,6 +423,8 @@ export default function ImageSearch() {
 
   // Function to copy image to clipboard
   const handleCopy = async (e: React.MouseEvent, imageUrl: string) => {
+    // Disabled copy functionality
+    /*
     e.stopPropagation()
 
     if (copying || copied) return
@@ -385,30 +449,54 @@ export default function ImageSearch() {
 
         // Show success state
         setCopied(true)
-        setTimeout(() => {
-          setCopied(false)
-        }, 2000)
-      } catch (err) {
-        console.error("Failed to copy image: ", err)
-
-        // Fallback for browsers that don't support clipboard.write with images
-        // Create a temporary link element to download the image
-        const link = document.createElement("a")
-        link.href = URL.createObjectURL(blob)
-        link.download = `image-${Date.now()}.png`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-
-        alert("Your browser doesn't support copying images directly. The image has been downloaded instead.")
+      } catch (clipboardErr) {
+        console.error("Clipboard API failed:", clipboardErr)
+        alert("Your browser doesn't support copying images. Please try saving it instead.")
       }
-    } catch (error) {
-      console.error("Error copying image to clipboard:", error)
-      alert("Unable to copy this image. Please try right-clicking and saving it manually.")
+    } catch (err) {
+      console.error("Failed to copy image:", err)
     } finally {
       setCopying(false)
     }
+    */
   }
+
+  const fetchInitialImages = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Reset pagination
+      setCurrentPage(1);
+      
+      // Fetch initial set of images (similar to what would appear on page load)
+      const result = await fetchBeamImages(1, imagesPerPage);
+      
+      setResults(result.images);
+      setHasMore(result.hasMore);
+      setTotalCount(result.totalCount);
+      
+      // Important: Set the correct search mode for infinite scroll to work
+      setSearchMode('standard');
+    } catch (err) {
+      console.error('Error fetching initial images:', err);
+      setError('Failed to load images. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [imagesPerPage]);
+
+  useEffect(() => {
+    fetchInitialImages();
+  }, [fetchInitialImages]);
+
+  const breakpointColumnsObj = {
+    default: 6,  // xl: 6 columns
+    1280: 5,     // lg: 5 columns
+    1024: 4,     // md: 4 columns
+    768: 3,      // sm: 3 columns
+    640: 2       // xs: 2 columns
+  };
 
   return (
     <div className="min-h-screen bg-[#6D6E71] grid-bg">
@@ -429,10 +517,12 @@ export default function ImageSearch() {
               placeholder=""
               value={query}
               onChange={(e) => {
-                setQuery(e.target.value);
-                // If the query becomes empty, trigger the search to show all images
-                if (e.target.value === '') {
-                  handleSearch();
+                const newQuery = e.target.value;
+                setQuery(newQuery);
+                
+                // Immediately fetch initial images when the query becomes empty
+                if (newQuery === '' && query !== '') {
+                  fetchInitialImagesIfEmpty();
                 }
               }}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -459,17 +549,20 @@ export default function ImageSearch() {
           </div>
         </div>
 
-        {/* Search indicator for embedding search */}
-        {query && isEmbeddingSearch && (
-          <div className="text-center text-[#F0EFE9] mb-8 font-sans text-xs">
-            <span className="bg-[#F0EFE9] text-[#6D6E71] px-2 py-1 rounded-full">AI-powered semantic search</span>
+        {/* Search loading indicator - styled like "no results" text */}
+        {query && isSearching && (
+          <div className="text-center mb-8">
+            <div className="flex flex-col items-center justify-center h-64">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#F0EFE9] border-t-transparent mb-4"></div>
+              <p className="text-[#F0EFE9] font-sans text-lg">Searching for ads...</p>
+            </div>
           </div>
         )}
 
         {/* Empty query indicator */}
         {!query && (
           <div className="text-center text-[#F0EFE9] mb-8 font-sans text-xs">
-            <span className="bg-[#F0EFE9] text-[#6D6E71] px-2 py-1 rounded-full">Showing all images</span>
+            {/* <span className="bg-[#F0EFE9] text-[#6D6E71] px-2 py-1 rounded-full">Showing all images</span> */}
           </div>
         )}
 
@@ -486,7 +579,11 @@ export default function ImageSearch() {
           </div>
         ) : results.length > 0 ? (
           <>
-            <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-4">
+            <Masonry
+              breakpointCols={breakpointColumnsObj}
+              className="flex w-full gap-4"
+              columnClassName="gap-4 flex flex-col"
+            >
               {results.map((image, index) => (
                 <ImageCard
                   key={`img-${index}-${image.id}`}
@@ -496,7 +593,7 @@ export default function ImageSearch() {
                   onCopy={(e) => handleCopy(e, image.supabase_img_url)}
                 />
               ))}
-            </div>
+            </Masonry>
 
             {/* Loading indicator for infinite scroll */}
             {hasMore && !isScrollLimitReached && (
@@ -573,14 +670,15 @@ export default function ImageSearch() {
                   )}
                 </button>
 
-                {/* Copy button */}
+                {/* Copy button - commented out */}
+                {/*
                 <button
-                  onClick={(e) => handleCopy(e, selectedImage.supabase_img_url)}
-                  disabled={copying || copied}
+                  onClick={handleCopy}
+                  disabled={isCopying || isCopied}
                   className="bg-[#F0EFE9] text-[#333333] px-4 py-2 rounded-md shadow-md flex items-center hover:bg-white"
                   aria-label="Copy to clipboard"
                 >
-                  {copied ? (
+                  {isCopied ? (
                     <>
                       <Check className="h-4 w-4 mr-2" />
                       <span className="text-sm font-sans">Copied</span>
@@ -597,6 +695,7 @@ export default function ImageSearch() {
                     </>
                   )}
                 </button>
+                */}
               </div>
             </div>
           </div>
@@ -640,6 +739,8 @@ function ImageCard({
 
   // Handle copy with local state
   const handleCopy = (e: React.MouseEvent) => {
+    // Disabled copy functionality
+    /*
     if (isCopying || isCopied) return
 
     setIsCopying(true)
@@ -655,6 +756,7 @@ function ImageCard({
         setIsCopied(false)
       }, 2000)
     }, 500)
+    */
   }
 
   return (
@@ -691,7 +793,8 @@ function ImageCard({
             )}
           </button>
 
-          {/* Copy button */}
+          {/* Copy button - commented out */}
+          {/*
           <button
             onClick={handleCopy}
             disabled={isCopying || isCopied}
@@ -706,6 +809,7 @@ function ImageCard({
               <Copy className="h-4 w-4" />
             )}
           </button>
+          */}
         </div>
       </div>
     </div>
