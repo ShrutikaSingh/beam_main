@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.next/
+out/
+build/
+
+# Generated files
+*.generated.*
+*.gen.*
+*.d.ts
+
+# Test files
+**/*.test.*
+**/*.spec.*
+coverage/
+
+# Build output
+dist/
+.build/
+
+# Environment files
+.env*
+!.env.example
+
+# Large files
+*.log
+*.csv
+*.dat
+*.out
+*.pid
+*.gz
+*.zip
+
+# Cache
+.cache/
+.eslintcache
+.npm
+.yarn
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Misc
+.DS_Store
+Thumbs.db 
