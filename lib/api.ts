@@ -34,8 +34,14 @@ export async function fetchBeamImages(page: number = 1, perPage: number = 20, se
   // Start building the query
   let query = supabase
   .from('beam_images')
-  .select('*')
+  .select(`
+    *,
+    beam_embeddings!inner (
+      image_id
+    )
+  `)
   .not('supabase_img_url', 'is', null)
+  .neq('supabase_img_url', '')
   .limit(perPage)
 
 
