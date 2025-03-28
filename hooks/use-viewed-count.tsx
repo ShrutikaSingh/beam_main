@@ -9,7 +9,7 @@ const FREE_SCROLL_LIMIT = 50
 const FREE_MODAL_LIMIT = 5 // Limit for modal views
 
 // Set this to true to enable auth walls
-const AUTH_ENABLED = true
+const AUTH_ENABLED = false
 
 export function useViewedCount() {
   const [scrollViewCount, setScrollViewCount] = useState(0)

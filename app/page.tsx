@@ -10,79 +10,23 @@ import { TypewriterEffect } from "@/components/typewriter-effect"
 import { AuthWall } from "@/components/auth-wall"
 import { useViewedCount } from "@/hooks/use-viewed-count"
 import { Navbar } from "@/components/navbar"
+import { fetchBeamImages, type BeamImage } from "@/lib/api"
 
 // Add a constant at the top of the file, near other constants
 const MODAL_ENABLED = true // Set to false to disable the image modal
 
-// Sample images for our gallery - use absolute paths
-const sampleImages = [
-  {
-    id: 1,
-    url: "/images/plants.png",
-    alt: "The Best Places to Buy Plants Online",
-    height: 450,
-  },
-  {
-    id: 2,
-    url: "/images/message.png",
-    alt: "Message conversation about beard products",
-    height: 750,
-  },
-  {
-    id: 3,
-    url: "/images/hair-growth.png",
-    alt: "Hair growth before and after comparison",
-    height: 550,
-  },
-  {
-    id: 4,
-    url: "/images/swimsuit.png",
-    alt: "Swimsuit advertisement with 20% off promotion",
-    height: 850,
-  },
-  {
-    id: 5,
-    url: "/images/composter.png",
-    alt: "Smart kitchen composter article from SELF magazine",
-    height: 650,
-  },
-]
-
 // Suggested searches for creative strategists
 const suggestedSearches = ["minimalist product packaging", "korean skincare", "emotional storytelling"]
-
-// Mock image data generator that uses our sample images
-const generateMockImages = (page: number, perPage = 20) => {
-  const startIndex = (page - 1) * perPage
-  return Array(perPage)
-    .fill(0)
-    .map((_, i) => {
-      // Select a random image from our samples
-      const randomIndex = Math.floor(Math.random() * sampleImages.length)
-      const sampleImage = sampleImages[randomIndex]
-
-      // Add some height variation (±20%) to make the masonry effect more visible
-      const heightVariation = sampleImage.height * (0.8 + Math.random() * 0.4)
-      const finalHeight = Math.floor(heightVariation)
-
-      return {
-        id: startIndex + i,
-        url: sampleImage.url,
-        alt: `${sampleImage.alt} (${startIndex + i + 1})`,
-        height: finalHeight,
-      }
-    })
-}
 
 export default function ImageSearch() {
   const [query, setQuery] = useState("")
   const [isSearching, setIsSearching] = useState(false)
-  const [results, setResults] = useState<any[]>([])
+  const [results, setResults] = useState<BeamImage[]>([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
-  const [totalImages] = useState(5000) // Total number of images in the collection
+  const [totalImages, setTotalImages] = useState(5000) // Will be updated from API response
   const [isInitialLoad, setIsInitialLoad] = useState(true)
-  const [selectedImage, setSelectedImage] = useState<any>(null)
+  const [selectedImage, setSelectedImage] = useState<BeamImage | null>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [copying, setCopying] = useState(false)
@@ -162,11 +106,21 @@ export default function ImageSearch() {
   useEffect(() => {
     if (isInitialLoad) {
       setIsSearching(true)
-      setTimeout(() => {
-        setResults(generateMockImages(1))
-        setIsSearching(false)
-        setIsInitialLoad(false)
-      }, 1000)
+      fetchBeamImages(1)
+        .then(({ images, hasMore, totalCount }) => {
+          setResults(images)
+          setHasMore(hasMore)
+          if (totalCount) {
+            setTotalImages(totalCount)
+          }
+        })
+        .catch((error) => {
+          console.error("Error loading initial images:", error)
+        })
+        .finally(() => {
+          setIsSearching(false)
+          setIsInitialLoad(false)
+        })
     }
   }, [isInitialLoad])
 
@@ -175,13 +129,20 @@ export default function ImageSearch() {
     setIsSearching(true)
     setPage(1)
 
-    // Simulate API call with mock data
-    setTimeout(() => {
-      const mockResults = generateMockImages(1)
-      setResults(mockResults)
-      setHasMore(true)
-      setIsSearching(false)
-    }, 1000)
+    fetchBeamImages(1, 20, query)
+      .then(({ images, hasMore, totalCount }) => {
+        setResults(images)
+        setHasMore(hasMore)
+        if (totalCount) {
+          setTotalImages(totalCount)
+        }
+      })
+      .catch((error) => {
+        console.error("Error searching images:", error)
+      })
+      .finally(() => {
+        setIsSearching(false)
+      })
   }
 
   // Load more images when scrolling
@@ -198,14 +159,19 @@ export default function ImageSearch() {
 
     setIsSearching(true)
 
-    // Simulate API call with delay
-    setTimeout(() => {
-      const newImages = generateMockImages(nextPage)
-      setResults((prev) => [...prev, ...newImages])
-      setPage(nextPage)
-      setIsSearching(false)
-    }, 800)
-  }, [page, isSearching, totalImages, isScrollLimitReached])
+    fetchBeamImages(nextPage, 20, query)
+      .then(({ images, hasMore }) => {
+        setResults((prev) => [...prev, ...images])
+        setHasMore(hasMore)
+        setPage(nextPage)
+      })
+      .catch((error) => {
+        console.error("Error loading more images:", error)
+      })
+      .finally(() => {
+        setIsSearching(false)
+      })
+  }, [page, isSearching, totalImages, isScrollLimitReached, query])
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
@@ -265,7 +231,7 @@ export default function ImageSearch() {
   }, [selectedImage])
 
   // Handle image selection with modal view counting
-  const handleImageSelect = (image: any) => {
+  const handleImageSelect = (image: BeamImage) => {
     // If modal is disabled, do nothing when images are clicked
     if (!MODAL_ENABLED) return
 
@@ -294,7 +260,7 @@ export default function ImageSearch() {
   }
 
   // Generate similar images for the modal
-  const getSimilarImages = (currentImage: any) => {
+  const getSimilarImages = (currentImage: BeamImage) => {
     // In a real app, this would call an API to get visually similar images
     // For now, we'll just get random images from our collection
     return results
@@ -451,11 +417,11 @@ export default function ImageSearch() {
             <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-4">
               {results.map((image) => (
                 <ImageCard
-                  key={image.id}
+                  key={`img-${image.id}-${image.original_id || ''}`}
                   image={image}
                   onClick={() => handleImageSelect(image)}
-                  onDownload={(e) => handleDownload(e, image.url)}
-                  onCopy={(e) => handleCopy(e, image.url)}
+                  onDownload={(e) => handleDownload(e, image.supabase_img_url)}
+                  onCopy={(e) => handleCopy(e, image.supabase_img_url)}
                 />
               ))}
             </div>
@@ -500,19 +466,24 @@ export default function ImageSearch() {
             </button>
 
             {/* Image at natural size */}
-            <div className="relative group">
+            <div className="group relative overflow-hidden">
               <img
-                src={selectedImage.url || "/placeholder.svg"}
-                alt={selectedImage.alt}
-                className="object-contain"
-                style={{ maxWidth: "95vw", maxHeight: "95vh" }}
+                src={selectedImage.supabase_img_url}
+                alt={selectedImage.brandName}
+                className="max-w-full max-h-full object-contain"
+                style={{ 
+                  height: `auto`,
+                  width: `auto`,
+                  maxHeight: `${Math.min(selectedImage.imageHeight || 800, window.innerHeight * 0.9)}px`,
+                  maxWidth: `${Math.min(selectedImage.imageWidth || 1200, window.innerWidth * 0.95)}px`,
+                }}
               />
 
               {/* Button container - grouped at bottom right */}
               <div className="absolute bottom-4 right-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                 {/* Download button */}
                 <button
-                  onClick={(e) => handleDownload(e, selectedImage.url)}
+                  onClick={(e) => handleDownload(e, selectedImage.supabase_img_url)}
                   disabled={downloading}
                   className="bg-[#F0EFE9] text-[#333333] px-4 py-2 rounded-md shadow-md flex items-center hover:bg-white"
                   aria-label="Download image"
@@ -532,7 +503,7 @@ export default function ImageSearch() {
 
                 {/* Copy button */}
                 <button
-                  onClick={(e) => handleCopy(e, selectedImage.url)}
+                  onClick={(e) => handleCopy(e, selectedImage.supabase_img_url)}
                   disabled={copying || copied}
                   className="bg-[#F0EFE9] text-[#333333] px-4 py-2 rounded-md shadow-md flex items-center hover:bg-white"
                   aria-label="Copy to clipboard"
@@ -566,14 +537,14 @@ export default function ImageSearch() {
   )
 }
 
-// Updated ImageCard component with grouped buttons
+// Updated ImageCard component with grouped buttons and using supabase_img_url
 function ImageCard({
   image,
   onClick,
   onDownload,
   onCopy,
 }: {
-  image: any
+  image: BeamImage
   onClick: () => void
   onDownload: (e: React.MouseEvent) => void
   onCopy: (e: React.MouseEvent) => void
@@ -620,12 +591,15 @@ function ImageCard({
       onClick={onClick}
       data-image-id={image.id}
     >
-      <div className="relative" style={{ maxHeight: `${image.height}px` }}>
+      <div className="relative" style={{ maxHeight: `${image.imageHeight || 600}px` }}>
         <img
-          src={image.url || "/placeholder.svg"}
-          alt={image.alt}
+          src={image.supabase_img_url}
+          alt={image.brandName || "Advertisement image"}
           className="w-full h-auto object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
+          style={{ 
+            aspectRatio: image.imageWidth && image.imageHeight ? `${image.imageWidth}/${image.imageHeight}` : 'auto' 
+          }}
         />
         <div className="absolute inset-0 bg-[#F0EFE9] opacity-0 group-hover:opacity-10 transition-opacity duration-300" />
 
