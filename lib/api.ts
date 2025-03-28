@@ -44,11 +44,8 @@ export async function fetchBeamImages(page: number = 1, perPage: number = 20, se
   .neq('supabase_img_url', '')
   .limit(perPage)
 
-
   // Add search/filter if provided
   if (searchQuery && searchQuery.trim() !== '') {
-    // You could implement more sophisticated searching here
-    // This is a simple example that searches in the brandName and industry fields
     query = query.or(`brandName.ilike.%${searchQuery}%,industry.ilike.%${searchQuery}%`)
   }
 
@@ -61,12 +58,35 @@ export async function fetchBeamImages(page: number = 1, perPage: number = 20, se
     console.error('Error fetching beam images:', error)
     throw new Error(`Failed to fetch images: ${error.message}`)
   }
+  
+  // Transform the URLs to use the new domain
+  const transformedData = data.map(image => ({
+    ...image,
+    supabase_img_url: transformImageUrl(image.supabase_img_url)
+  }));
 
   return {
-    images: data as BeamImage[],
+    images: transformedData as BeamImage[],
     hasMore: data.length === perPage,
     totalCount: count
   }
+}
+
+// Add this helper function to transform URLs
+function transformImageUrl(url: string): string {
+  if (!url) return url;
+  
+  // Replace old domain with new one
+  if (url.includes('auth.ravahq.com')) {
+    return url.replace('auth.ravahq.com', 'auth.beam.new');
+  }
+  
+  // Handle relative URLs by adding the new domain
+  if (url.startsWith('abcs') || !url.startsWith('http')) {
+    return `https://auth.beam.new/storage/v1/object/beamdata/${url}`;
+  }
+  
+  return url;
 }
 
 /**
